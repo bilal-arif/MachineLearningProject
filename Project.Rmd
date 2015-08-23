@@ -1,0 +1,98 @@
+---
+title: "Prediction Assignment"
+author: "Bilal Arif"
+date: "Sunday, August 23, 2015"
+output: html_document
+---
+
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+##Data Processing
+###Libraries
+```{r warning=FALSE}
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(e1071)
+library(gbm)
+library(doParallel)
+library(survival)
+library(splines)
+library(plyr)
+```
+
+###Data Loading
+```{r}
+setwd("D:/Uni Works/Data Science/Module 8")
+training <- read.csv("pml-training.csv", na.strings=c("#DIV/0!"), row.names = 1)
+testing <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!"), row.names = 1)
+
+#training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings=c("#DIV/0!"), row.names = 1)
+#testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings=c("#DIV/0!"), row.names = 1)
+```
+
+```{r}
+training <- training[, 6:dim(training)[2]]
+
+treshold <- dim(training)[1] * 0.95
+#Remove columns with more than 95% of NA or "" values
+goodColumns <- !apply(training, 2, function(x) sum(is.na(x)) > treshold  || sum(x=="") > treshold)
+
+training <- training[, goodColumns]
+
+badColumns <- nearZeroVar(training, saveMetrics = TRUE)
+
+training <- training[, badColumns$nzv==FALSE]
+
+training$classe = factor(training$classe)
+
+#Partition rows into training and crossvalidation
+inTrain <- createDataPartition(training$classe, p = 0.4)[[1]]
+crossv <- training[-inTrain,]
+training <- training[ inTrain,]
+inTrain <- createDataPartition(crossv$classe, p = 0.4)[[1]]
+crossv_test <- crossv[ -inTrain,]
+crossv <- crossv[inTrain,]
+
+
+testing <- testing[, 6:dim(testing)[2]]
+testing <- testing[, goodColumns]
+testing$classe <- NA
+testing <- testing[, badColumns$nzv==FALSE]
+```
+
+```{r}
+mod1 <- train(classe ~ ., data=training, method="rf")
+pred1 <- predict(mod1, crossv)
+```
+
+```{r}
+confusionMatrix(pred1, crossv$classe)
+```
+
+```{r}
+pred1 <- predict(mod1, crossv_test)
+accuracy <- sum(pred1 == crossv_test$classe) / length(pred1)
+```
+
+The model i used for prediction analysis was Random Forest. The accuracy of 99.6%.
+
+##Testing
+```{r}
+pml_write_files = function(x){
+n = length(x)
+for(i in 1:n){
+filename = paste0("problem_id_",i,".txt")
+write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+}
+x <- testing
+
+answers <- predict(mod1, newdata=x)
+answers
+```
+
+```{r}
+pml_write_files(answers)
+```
